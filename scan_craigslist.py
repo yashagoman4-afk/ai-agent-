@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Fetch Craigslist housing listings for one city via its public RSS feed.
+"""Fetch Craigslist housing listings for one or more cities via public RSS feeds.
 
 Usage:
-    python3 scan_craigslist.py --city newyork --category apa
+    python3 scan_craigslist.py --city newyork miami sfbay --category apa
 """
 
 import argparse
 import csv
 import os
 import sys
+import time
 import xml.etree.ElementTree as ET
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -16,6 +17,21 @@ from urllib.request import Request, urlopen
 USER_AGENT = "Mozilla/5.0 (compatible; rental-scanner/0.1)"
 DC_DATE = "{http://purl.org/dc/elements/1.1/}date"
 CSV_FIELDS = ["city", "category", "title", "link", "date"]
+
+# Craigslist's web addresses for each city (not always the plain city name).
+DEFAULT_CITIES = [
+    "newyork",
+    "miami",
+    "sfbay",  # San Francisco Bay Area
+    "losangeles",
+    "boston",
+    "chicago",
+    "washingtondc",
+    "philadelphia",
+    "newmexico",  # covers the whole state, not just one city
+]
+
+SECONDS_BETWEEN_REQUESTS = 2
 
 
 def fetch_rss(city: str, category: str) -> bytes:
@@ -57,9 +73,39 @@ def save_new_listings(csv_path: str, listings: list[dict]) -> int:
     return len(listings)
 
 
+def scan_city(city: str, category: str, output: str) -> None:
+    try:
+        xml_bytes = fetch_rss(city, category)
+    except HTTPError as error:
+        print(f"[{city}] Request failed: HTTP {error.code}", file=sys.stderr)
+        return
+    except URLError as error:
+        print(f"[{city}] Request failed: {error.reason}", file=sys.stderr)
+        return
+
+    listings = parse_listings(xml_bytes)
+    for listing in listings:
+        listing["city"] = city
+        listing["category"] = category
+
+    already_saved = load_saved_links(output)
+    new_listings = [listing for listing in listings if listing["link"] not in already_saved]
+    save_new_listings(output, new_listings)
+
+    print(f"[{city}] found {len(listings)}, saved {len(new_listings)} new, {len(listings) - len(new_listings)} already had")
+    for listing in new_listings:
+        print(f"  - {listing['title']}")
+        print(f"    {listing['link']}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch Craigslist housing listings via RSS.")
-    parser.add_argument("--city", default="newyork", help="Craigslist city subdomain, e.g. newyork, losangeles, chicago")
+    parser.add_argument(
+        "--city",
+        nargs="+",
+        default=DEFAULT_CITIES,
+        help="One or more Craigslist city codes, e.g. --city newyork sfbay chicago",
+    )
     parser.add_argument(
         "--category",
         default="apa",
@@ -69,31 +115,10 @@ def main() -> None:
     parser.add_argument("--output", default="listings.csv", help="CSV file to save listings into")
     args = parser.parse_args()
 
-    try:
-        xml_bytes = fetch_rss(args.city, args.category)
-    except HTTPError as error:
-        print(f"Request failed: HTTP {error.code}", file=sys.stderr)
-        sys.exit(1)
-    except URLError as error:
-        print(f"Request failed: {error.reason}", file=sys.stderr)
-        sys.exit(1)
-
-    listings = parse_listings(xml_bytes)
-    for listing in listings:
-        listing["city"] = args.city
-        listing["category"] = args.category
-
-    already_saved = load_saved_links(args.output)
-    new_listings = [listing for listing in listings if listing["link"] not in already_saved]
-    save_new_listings(args.output, new_listings)
-
-    print(f"Found {len(listings)} listings for {args.city}/{args.category}")
-    print(f"{len(new_listings)} were new and got saved to {args.output}")
-    print(f"{len(listings) - len(new_listings)} were already saved from before\n")
-    for listing in new_listings:
-        print(f"- {listing['title']}")
-        print(f"  {listing['link']}")
-        print(f"  {listing['date']}\n")
+    for index, city in enumerate(args.city):
+        scan_city(city, args.category, args.output)
+        if index < len(args.city) - 1:
+            time.sleep(SECONDS_BETWEEN_REQUESTS)
 
 
 if __name__ == "__main__":
