@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -113,13 +114,38 @@ def main() -> None:
         help="apa = apartments/housing offered, roo = rooms/shared wanted",
     )
     parser.add_argument("--output", default="listings.csv", help="CSV file to save listings into")
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Keep running forever, doing a fresh scan every --interval seconds (stop with Ctrl+C)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=300,
+        help="Seconds to wait between scans when --loop is on (default 300 = 5 minutes)",
+    )
     args = parser.parse_args()
 
-    for index, city in enumerate(args.city):
-        scan_city(city, args.category, args.output)
-        if index < len(args.city) - 1:
-            time.sleep(SECONDS_BETWEEN_REQUESTS)
+    if args.loop and args.interval < 60:
+        parser.error("--interval must be at least 60 seconds to avoid overloading Craigslist")
+
+    while True:
+        print(f"\n=== Scan started {datetime.now():%Y-%m-%d %H:%M:%S} ===")
+        for index, city in enumerate(args.city):
+            scan_city(city, args.category, args.output)
+            if index < len(args.city) - 1:
+                time.sleep(SECONDS_BETWEEN_REQUESTS)
+
+        if not args.loop:
+            break
+
+        print(f"Sleeping {args.interval} seconds until next scan... (Ctrl+C to stop)")
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nStopped.")
