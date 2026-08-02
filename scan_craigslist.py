@@ -11,6 +11,7 @@ Adding a new site (once you've confirmed it has a real, no-login RSS feed):
 
 import argparse
 import csv
+import json
 import os
 import re
 import sys
@@ -123,16 +124,133 @@ def load_template(template_path: str) -> str:
         return file.read()
 
 
-def write_draft(drafts_path: str, template: str, listing: dict) -> None:
+def write_draft(drafts_path: str, drafts_json_path: str, template: str, listing: dict) -> None:
     price = extract_price(listing["title"])
     message = template.format(title=listing["title"], link=listing["link"], price=price if price is not None else "?")
+    message = message.strip()
+
     with open(drafts_path, "a", encoding="utf-8") as file:
         file.write("=" * 60 + "\n")
         file.write(f"Listing: {listing['title']}\n")
         file.write(f"Link:    {listing['link']}\n")
         file.write(f"Go here to actually reply: {listing['link']}\n\n")
-        file.write(message.strip() + "\n\n")
+        file.write(message + "\n\n")
+
+    records = []
+    if os.path.exists(drafts_json_path):
+        with open(drafts_json_path, encoding="utf-8") as file:
+            records = json.load(file)
+    records.append({"title": listing["title"], "link": listing["link"], "message": message})
+    with open(drafts_json_path, "w", encoding="utf-8") as file:
+        json.dump(records, file, indent=2)
+
     print(f"  >> DRAFTED a reply for you in {drafts_path} - go read it and send it yourself!")
+
+
+REVIEW_PAGE_TEMPLATE = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Reply Review Queue</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 20px; }
+  #progress { color: #666; margin-bottom: 16px; }
+  #title { font-weight: bold; margin-bottom: 4px; }
+  #link { display: block; margin-bottom: 12px; word-break: break-all; }
+  textarea { width: 100%; height: 160px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 8px; }
+  .buttons { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button { padding: 10px 16px; font-size: 14px; cursor: pointer; border-radius: 6px; border: 1px solid #ccc; background: #f5f5f5; }
+  #next { background: #2563eb; color: white; border-color: #2563eb; font-weight: bold; }
+  #done { font-size: 18px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<h1>Reply Review Queue</h1>
+<p>This page never sends anything by itself. For each listing: click <b>Open listing</b>,
+reply on that site yourself using the pasted message, then click <b>Sent it - Next</b>
+to close that tab and move on.</p>
+<div id="progress"></div>
+<div id="card">
+  <div id="title"></div>
+  <a id="link" target="_blank"></a>
+  <textarea id="message" readonly></textarea>
+  <div class="buttons">
+    <button id="copy">Copy message</button>
+    <button id="open">Open listing</button>
+    <button id="next">Sent it - Next</button>
+    <button id="skip">Skip this one</button>
+  </div>
+</div>
+<div id="done" style="display:none">All done for now! Re-run the scanner and reload this page for more.</div>
+<script>
+const DRAFTS = __DRAFTS_JSON__;
+let index = 0;
+let currentWindow = null;
+
+function render() {
+  if (index >= DRAFTS.length) {
+    document.getElementById("card").style.display = "none";
+    document.getElementById("progress").style.display = "none";
+    document.getElementById("done").style.display = "block";
+    return;
+  }
+  const draft = DRAFTS[index];
+  document.getElementById("progress").textContent = (index + 1) + " of " + DRAFTS.length;
+  document.getElementById("title").textContent = draft.title;
+  document.getElementById("link").textContent = draft.link;
+  document.getElementById("link").href = draft.link;
+  document.getElementById("message").value = draft.message;
+}
+
+function closeCurrentWindow() {
+  if (currentWindow && !currentWindow.closed) {
+    currentWindow.close();
+  }
+  currentWindow = null;
+}
+
+document.getElementById("copy").addEventListener("click", () => {
+  navigator.clipboard.writeText(DRAFTS[index].message).catch(() => {
+    document.getElementById("message").select();
+    document.execCommand("copy");
+  });
+});
+
+document.getElementById("open").addEventListener("click", () => {
+  currentWindow = window.open(DRAFTS[index].link, "_blank");
+  navigator.clipboard.writeText(DRAFTS[index].message).catch(() => {});
+});
+
+document.getElementById("next").addEventListener("click", () => {
+  closeCurrentWindow();
+  index++;
+  render();
+});
+
+document.getElementById("skip").addEventListener("click", () => {
+  closeCurrentWindow();
+  index++;
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
+"""
+
+
+def build_review_page(drafts_json_path: str, review_page_path: str) -> None:
+    if not os.path.exists(drafts_json_path):
+        return
+    with open(drafts_json_path, encoding="utf-8") as file:
+        records = json.load(file)
+    json_blob = json.dumps(records).replace("</", "<\\/")
+    html = REVIEW_PAGE_TEMPLATE.replace("__DRAFTS_JSON__", json_blob)
+    with open(review_page_path, "w", encoding="utf-8") as file:
+        file.write(html)
+    print(f"Updated {review_page_path} - open it in your browser to go through replies one by one.")
 
 
 def scan_city(
@@ -144,6 +262,7 @@ def scan_city(
     max_price: int | None = None,
     template_path: str | None = None,
     drafts_path: str = "drafts.txt",
+    drafts_json_path: str = "drafts.json",
 ) -> None:
     tag = f"{source}/{city}"
     try:
@@ -172,7 +291,7 @@ def scan_city(
         print(f"  - {listing['title']}")
         print(f"    {listing['link']}")
         if template and listing_matches(listing, keywords, max_price):
-            write_draft(drafts_path, template, listing)
+            write_draft(drafts_path, drafts_json_path, template, listing)
 
 
 def main() -> None:
@@ -208,6 +327,13 @@ def main() -> None:
     parser.add_argument("--max-price", type=int, default=None, help="Only draft a reply if the price in the title is at or below this")
     parser.add_argument("--template", default="reply_template.txt", help="File with your reply wording")
     parser.add_argument("--drafts-output", default="drafts.txt", help="File where drafted replies get saved")
+    parser.add_argument("--drafts-json", default="drafts.json", help="Structured draft data used to build the review page")
+    parser.add_argument(
+        "--review-page",
+        default="review.html",
+        help="Local web page you open in a browser to click through drafts one by one "
+        "(Open listing -> reply yourself -> Sent it, Next)",
+    )
     parser.add_argument(
         "--loop",
         action="store_true",
@@ -238,9 +364,13 @@ def main() -> None:
                 max_price=args.max_price,
                 template_path=args.template if args.draft_replies else None,
                 drafts_path=args.drafts_output,
+                drafts_json_path=args.drafts_json,
             )
             if index < len(jobs) - 1:
                 time.sleep(SECONDS_BETWEEN_REQUESTS)
+
+        if args.draft_replies:
+            build_review_page(args.drafts_json, args.review_page)
 
         if not args.loop:
             break
