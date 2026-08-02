@@ -169,7 +169,7 @@ REVIEW_PAGE_TEMPLATE = """<!doctype html>
 <h1>Reply Review Queue</h1>
 <p>This page never sends anything by itself. For each listing: click <b>Open listing</b>,
 reply on that site yourself using the pasted message, then click <b>Sent it - Next</b>
-to close that tab and move on.</p>
+to move on (your tab stays open in case you want to go back to it).</p>
 <div id="progress"></div>
 <div id="card">
   <div id="title"></div>
@@ -186,7 +186,6 @@ to close that tab and move on.</p>
 <script>
 const DRAFTS = __DRAFTS_JSON__;
 let index = 0;
-let currentWindow = null;
 
 function render() {
   if (index >= DRAFTS.length) {
@@ -203,13 +202,6 @@ function render() {
   document.getElementById("message").value = draft.message;
 }
 
-function closeCurrentWindow() {
-  if (currentWindow && !currentWindow.closed) {
-    currentWindow.close();
-  }
-  currentWindow = null;
-}
-
 document.getElementById("copy").addEventListener("click", () => {
   navigator.clipboard.writeText(DRAFTS[index].message).catch(() => {
     document.getElementById("message").select();
@@ -218,18 +210,16 @@ document.getElementById("copy").addEventListener("click", () => {
 });
 
 document.getElementById("open").addEventListener("click", () => {
-  currentWindow = window.open(DRAFTS[index].link, "_blank");
+  window.open(DRAFTS[index].link, "_blank");
   navigator.clipboard.writeText(DRAFTS[index].message).catch(() => {});
 });
 
 document.getElementById("next").addEventListener("click", () => {
-  closeCurrentWindow();
   index++;
   render();
 });
 
 document.getElementById("skip").addEventListener("click", () => {
-  closeCurrentWindow();
   index++;
   render();
 });
