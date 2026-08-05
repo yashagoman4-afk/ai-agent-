@@ -18,13 +18,13 @@ No test runner is configured yet.
 
 ## Architecture
 
-- `App.tsx` — root component, simple two-tab switcher (Record / History)
-- `src/screens/RecordScreen.tsx` — record button, live + cleaned transcript
-- `src/screens/HistoryScreen.tsx` — list of saved recordings
-- `src/hooks/useVoiceRecorder.ts` — wraps `expo-audio` (recording) and
-  `expo-speech-recognition` (on-device speech-to-text, no API key needed)
-- `src/lib/fillerWords.ts` — regex-based filler word/phrase removal
-- `src/lib/storage.ts` — persists recordings to `AsyncStorage`
+Everything lives in a single `App.tsx`:
+
+- `RecordTab` — records audio + live-transcribes via `expo-audio` and
+  `expo-speech-recognition` (on-device, no API key needed)
+- `removeFillerWords` — regex-based filler word/phrase removal
+- `HistoryTab` — lists/deletes saved recordings
+- Recordings persist to `AsyncStorage`
 
 Note: `expo-speech-recognition` requires a custom dev client / EAS build —
 it will not work inside plain Expo Go.
