@@ -1,17 +1,30 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-## Repository status
+## What this is
 
-This repository is currently empty (no commits, no source files). There is no
-established build system, test suite, or architecture to document yet.
+A mobile app (Expo / React Native / TypeScript) that records your voice,
+transcribes it to text on-device, and strips out filler words ("um", "uh",
+"like", "you know", etc.) from the transcript.
 
-When code is added to this repository, update this file with:
-- Commands for building, linting, and running tests (including how to run a single test)
-- The high-level architecture and structure of the codebase
+## Commands
 
-## Agent role
+- `npm start` — start the Expo dev server
+- `npm run android` / `npm run ios` / `npm run web` — run on a platform
+- `npx tsc --noEmit` — type-check
 
-You will be acting as a scanning device: you will scan the internet looking for
-apartment listings and people looking to rent a room in an apartment.
+No test runner is configured yet.
+
+## Architecture
+
+- `App.tsx` — root component, simple two-tab switcher (Record / History)
+- `src/screens/RecordScreen.tsx` — record button, live + cleaned transcript
+- `src/screens/HistoryScreen.tsx` — list of saved recordings
+- `src/hooks/useVoiceRecorder.ts` — wraps `expo-audio` (recording) and
+  `expo-speech-recognition` (on-device speech-to-text, no API key needed)
+- `src/lib/fillerWords.ts` — regex-based filler word/phrase removal
+- `src/lib/storage.ts` — persists recordings to `AsyncStorage`
+
+Note: `expo-speech-recognition` requires a custom dev client / EAS build —
+it will not work inside plain Expo Go.
